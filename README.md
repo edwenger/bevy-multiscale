@@ -4,7 +4,7 @@ Bevy-based multiscale polio transmission simulation demo.
 
 Visualizes disease transmission dynamics across a hierarchical population structure (individuals → households → neighborhoods → village) with interactive parameter controls.
 
-<video src="docs/app_demo.mp4" autoplay loop muted playsinline width="600"></video>
+![App Demo](docs/app_demo.gif)
 
 ## Running
 
