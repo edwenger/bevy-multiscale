@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::log::LogPlugin;
+use bevy::window::{Window, WindowPlugin};
 use bevy_egui::EguiPlugin;
 
 use bevy_multiscale::disease;
@@ -12,7 +13,16 @@ fn main() {
 
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.1, 0.1, 0.12)))
-        .add_plugins(DefaultPlugins.build().disable::<LogPlugin>())
+        .add_plugins(DefaultPlugins.build()
+            .disable::<LogPlugin>()
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Polio Multi-Scale Demo".into(),
+                    resolution: (1400.0, 1000.0).into(),
+                    ..default()
+                }),
+                ..default()
+            }))
         .add_plugins(EguiPlugin)
         .add_plugins(disease::DiseasePlugin)
         .add_plugins(population::PopulationPlugin)

@@ -40,14 +40,14 @@ impl Default for PopulationConfig {
 pub struct ResetPopulationEvent;
 
 /// Visual layout constants
-const NEIGHBORHOOD_SPACING: f32 = 120.0;
-const HOUSEHOLD_GAP: f32 = 20.0;          // Gap between households
+const NEIGHBORHOOD_SPACING: f32 = 100.0;  // Reduced from 120 to fit more rows
+const HOUSEHOLD_GAP: f32 = 15.0;          // Gap between households (reduced from 20)
 const INDIVIDUAL_SPACING: f32 = 14.0;     // Tighter spacing within household
 const INDIVIDUAL_WIDTH: f32 = 12.0;
 const INDIVIDUAL_HEIGHT: f32 = 12.0;
 const BAR_WIDTH: f32 = 4.0;
-const GRID_LEFT_MARGIN: f32 = -450.0;
-const GRID_TOP_MARGIN: f32 = 200.0;
+const GRID_LEFT_MARGIN: f32 = -580.0;     // Moved left for more horizontal space
+const GRID_TOP_MARGIN: f32 = 310.0;       // Moved up, just below title
 const HOUSEHOLD_BOX_PADDING: f32 = 6.0;   // Padding inside household box
 
 /// Spawn initial population (Startup system)
