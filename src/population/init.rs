@@ -216,7 +216,7 @@ pub fn respawn_population(
 }
 
 /// Internal function to spawn population (shared between startup and respawn)
-fn spawn_population_internal(
+pub fn spawn_population_internal(
     commands: &mut Commands,
     config: &PopulationConfig,
     rng: &mut impl Rng,

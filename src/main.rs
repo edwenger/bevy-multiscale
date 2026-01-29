@@ -9,6 +9,7 @@ use bevy_multiscale::simulation;
 use bevy_multiscale::ui;
 
 fn main() {
+    #[cfg(not(target_arch = "wasm32"))]
     env_logger::try_init().ok();
 
     App::new()
