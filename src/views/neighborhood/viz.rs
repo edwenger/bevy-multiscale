@@ -1,29 +1,39 @@
 use bevy::prelude::*;
 
 use crate::disease::{Immunity, Infection};
-use crate::population::{Individual, IndividualVisual, ImmunityBar, SheddingBar};
+use crate::population::{Individual, IndividualVisual};
+use crate::ui::components::*;
+use crate::ui::viz::{immunity_to_fill_color, shedding_border_color, strain_color};
 
-const BAR_WIDTH: f32 = 5.0;
+const BAR_WIDTH: f32 = 4.0;
 
-/// Update individual visual representations based on state
+/// Update individual fill/border and immunity bar
 pub fn update_individual_visuals(
-    mut individuals: Query<(&Immunity, &Children, &mut Sprite, Option<&Infection>), (With<Individual>, With<IndividualVisual>)>,
-    mut bar_query: Query<(&mut Transform, &mut Sprite), (With<ImmunityBar>, Without<IndividualVisual>)>,
+    individuals: Query<(&Immunity, &Children, Option<&Infection>), (With<Individual>, With<IndividualVisual>)>,
+    mut fills: Query<&mut Sprite, (With<IndividualFill>, Without<IndividualBorder>)>,
+    mut borders: Query<(&mut Sprite, &mut Transform), (With<IndividualBorder>, Without<IndividualFill>)>,
+    mut bar_query: Query<(&mut Transform, &mut Sprite), (With<ImmunityBar>, Without<IndividualFill>, Without<IndividualBorder>)>,
 ) {
-    for (immunity, children, mut sprite, infection) in individuals.iter_mut() {
-        // Update individual sprite color based on infection status
-        sprite.color = if infection.is_some() {
-            Color::rgb(0.85, 0.25, 0.25)  // Red when infected
-        } else {
-            Color::rgb(0.4, 0.4, 0.4)     // Gray when susceptible/recovered
-        };
+    for (immunity, children, infection) in individuals.iter() {
+        let fill_color = immunity_to_fill_color(immunity.current_immunity);
+        let (border_color, border_size) = shedding_border_color(infection, 14.0);
 
-        // Update immunity bar
         for &child in children.iter() {
+            if let Ok(mut fill_sprite) = fills.get_mut(child) {
+                fill_sprite.color = fill_color;
+            }
+
+            if let Ok((mut border_sprite, mut border_transform)) = borders.get_mut(child) {
+                border_sprite.color = border_color;
+                border_sprite.custom_size = Some(Vec2::new(border_size, border_size));
+                border_transform.scale = Vec3::ONE;
+            }
+
             if let Ok((mut transform, mut bar_sprite)) = bar_query.get_mut(child) {
                 let height = (immunity.current_immunity.log10() * 15.0).max(5.0).min(100.0);
                 bar_sprite.custom_size = Some(Vec2::new(BAR_WIDTH, height));
-                transform.translation = Vec3::new(-3.0, height / 2.0 + 5.0, 0.1);
+                bar_sprite.color = fill_color;
+                transform.translation = Vec3::new(-3.0, height / 2.0 + 6.0, 0.1);
             }
         }
     }
@@ -36,17 +46,18 @@ pub fn add_shedding_visuals(
 ) {
     for (entity, infection) in new_infections.iter() {
         let height = (infection.viral_shedding.log10() * 8.0).max(5.0).min(80.0);
+        let color = strain_color(infection.strain);
 
         commands.entity(entity).with_children(|parent| {
             parent.spawn((
                 SheddingBar,
                 SpriteBundle {
                     sprite: Sprite {
-                        color: Color::rgba(0.9, 0.2, 0.2, 0.8),
+                        color: color.with_a(0.8),
                         custom_size: Some(Vec2::new(BAR_WIDTH, height)),
                         ..default()
                     },
-                    transform: Transform::from_xyz(3.0, height / 2.0 + 5.0, 0.1),
+                    transform: Transform::from_xyz(3.0, height / 2.0 + 6.0, 0.1),
                     ..default()
                 },
             ));
@@ -65,11 +76,13 @@ pub fn remove_shedding_visuals(
 ) {
     // Update existing shedding bars
     for (infection, children) in infected.iter() {
+        let color = strain_color(infection.strain);
         for &child in children.iter() {
             if let Ok((mut transform, mut sprite)) = bar_query.get_mut(child) {
                 let height = (infection.viral_shedding.log10() * 8.0).max(5.0).min(80.0);
                 sprite.custom_size = Some(Vec2::new(BAR_WIDTH, height));
-                transform.translation = Vec3::new(3.0, height / 2.0 + 5.0, 0.1);
+                sprite.color = color.with_a(0.8);
+                transform.translation = Vec3::new(3.0, height / 2.0 + 6.0, 0.1);
             }
         }
     }

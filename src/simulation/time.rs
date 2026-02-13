@@ -31,7 +31,7 @@ pub struct SimulationSpeed {
 
 impl Default for SimulationSpeed {
     fn default() -> Self {
-        Self { multiplier: 1.0 }
+        Self { multiplier: 7.0 }
     }
 }
 

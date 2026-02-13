@@ -5,10 +5,10 @@ use bevy_egui::{egui, EguiContexts};
 use crate::disease::{Immunity, Infection, format_infection_type};
 use crate::population::{Individual, IndividualVisual};
 
-/// Bounding box for hover detection (includes bars above the sprite)
-const HOVER_WIDTH: f32 = 14.0;
-const HOVER_HEIGHT: f32 = 100.0;  // Tall enough to cover bars
-const HOVER_Y_OFFSET: f32 = 40.0; // Center point shifted up to cover bars
+/// Bounding box for hover detection (matches compact sprite size)
+const HOVER_WIDTH: f32 = 6.0;
+const HOVER_HEIGHT: f32 = 6.0;
+const HOVER_Y_OFFSET: f32 = 0.0;
 
 /// System to display tooltips on individual hover
 pub fn individual_tooltip(
@@ -34,7 +34,7 @@ pub fn individual_tooltip(
     for (_entity, transform, individual, immunity, infection) in individuals.iter() {
         let pos = transform.translation().truncate();
 
-        // Check if cursor is within hover bounds (centered on individual, extended upward for bars)
+        // Check if cursor is within hover bounds
         let center = Vec2::new(pos.x, pos.y + HOVER_Y_OFFSET);
         let half_size = Vec2::new(HOVER_WIDTH / 2.0, HOVER_HEIGHT / 2.0);
 
@@ -80,7 +80,12 @@ pub fn individual_tooltip(
                             ui.end_row();
 
                             ui.label("Strain:");
-                            ui.label(format_infection_type(inf.strain, inf.serotype));
+                            let strain_label = if inf.strain == crate::disease::InfectionStrain::OPV {
+                                format!("{} (mut {}/3)", format_infection_type(inf.strain, inf.serotype), inf.mutations)
+                            } else {
+                                format_infection_type(inf.strain, inf.serotype)
+                            };
+                            ui.label(strain_label);
                             ui.end_row();
                         }
                     });

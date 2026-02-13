@@ -52,11 +52,3 @@ pub struct NeighborhoodMember {
 /// Marker for visual representation of an individual
 #[derive(Component)]
 pub struct IndividualVisual;
-
-/// Child component for immunity bar visualization
-#[derive(Component)]
-pub struct ImmunityBar;
-
-/// Child component for shedding bar visualization
-#[derive(Component)]
-pub struct SheddingBar;

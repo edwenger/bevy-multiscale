@@ -92,8 +92,13 @@ pub fn update_transmission_arcs(
     mut commands: Commands,
     time: Res<Time>,
     mut arcs: Query<(Entity, &mut TransmissionArc, &mut Sprite)>,
+    mut timings: ResMut<crate::simulation::SystemTimings>,
 ) {
+    let t0 = bevy::utils::Instant::now();
+    let mut count = 0usize;
+
     for (entity, mut arc, mut sprite) in arcs.iter_mut() {
+        count += 1;
         arc.lifetime.tick(time.delta());
 
         // Fade out based on remaining time
@@ -104,4 +109,7 @@ pub fn update_transmission_arcs(
             commands.entity(entity).despawn();
         }
     }
+
+    timings.arc_update_ms = t0.elapsed().as_secs_f32() * 1000.0;
+    timings.arc_count = count;
 }

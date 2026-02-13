@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use rand::seq::SliceRandom;
 use rand::Rng;
 
-use crate::disease::{Immunity, Infection, DiseaseParams};
+use crate::disease::{Immunity, Infection, InfectionStrain, InfectionSerotype, DiseaseParams};
 use crate::population::Individual;
 use super::time::SimulationTime;
 use super::transmission::TransmissionParams;
@@ -14,6 +14,12 @@ pub struct SeedInfectionEvent {
     pub dose: f32,
     pub min_age: f32,
     pub max_age: f32,
+    /// Override strain (None = use default_strain from TransmissionParams)
+    pub strain: Option<InfectionStrain>,
+    /// Override serotype (None = use default_serotype from TransmissionParams)
+    pub serotype: Option<InfectionSerotype>,
+    /// Fraction of eligible population to target (None = use count)
+    pub coverage: Option<f32>,
 }
 
 impl Default for SeedInfectionEvent {
@@ -23,6 +29,9 @@ impl Default for SeedInfectionEvent {
             dose: 1e6,
             min_age: 0.0,
             max_age: 100.0,
+            strain: None,
+            serotype: None,
+            coverage: None,
         }
     }
 }
@@ -39,6 +48,9 @@ pub fn handle_seed_infection(
     let mut rng = rand::thread_rng();
 
     for event in events.read() {
+        let strain = event.strain.unwrap_or(tx_params.default_strain);
+        let serotype = event.serotype.unwrap_or(tx_params.default_serotype);
+
         // Filter to eligible individuals (by age, not already infected)
         let eligible: Vec<_> = susceptibles.iter()
             .filter(|(_, ind, _)| ind.age >= event.min_age && ind.age <= event.max_age)
@@ -49,8 +61,13 @@ pub fn handle_seed_infection(
             continue;
         }
 
-        // Sample targets
-        let n = event.count.min(eligible.len());
+        // Compute number of targets from coverage or count
+        let n = if let Some(cov) = event.coverage {
+            (cov * eligible.len() as f32).round() as usize
+        } else {
+            event.count
+        };
+        let n = n.min(eligible.len());
         let targets: Vec<_> = eligible.choose_multiple(&mut rng, n).cloned().collect();
 
         for target_entity in targets {
@@ -58,17 +75,22 @@ pub fn handle_seed_infection(
                 // Calculate infection probability
                 let p_inf = immunity.calculate_infection_probability(
                     event.dose,
-                    tx_params.default_strain,
-                    tx_params.default_serotype,
+                    strain,
+                    serotype,
                     &disease_params,
                 );
 
                 // Attempt infection
                 if rng.gen::<f32>() < p_inf {
-                    let mut infection = Infection::new(
-                        tx_params.default_strain,
-                        tx_params.default_serotype
-                    );
+                    let mut infection = if strain == InfectionStrain::OPV {
+                        Infection::new_opv(
+                            serotype, 0,
+                            tx_params.mean_reversion_days,
+                            &mut rng,
+                        )
+                    } else {
+                        Infection::new(strain, serotype)
+                    };
                     immunity.set_infection_prognoses(
                         &mut infection,
                         sim_time.day as f32,

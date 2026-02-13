@@ -7,9 +7,12 @@ description = "Bevy-based multiscale polio transmission simulation"
 [dependencies]
 bevy = "0.13"
 bevy_egui = "0.25"
+egui_plot = "0.26"
 rand = "0.8"
 rand_distr = "0.4"
 log = "0.4"
+csv = "1.3"
+serde = { version = "1", features = ["derive"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.10"
