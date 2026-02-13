@@ -4,17 +4,24 @@ use bevy_egui::{egui, EguiContexts};
 use crate::disease::{Immunity, Infection, InfectionStrain, InfectionSerotype};
 use crate::population::{Individual, Sex};
 use crate::simulation::{
-    SimulationTime, SimulationSpeed, SimState, SeedInfectionEvent
+    SimulationTime, SimulationSpeed, SimState, SeedInfectionEvent, TransmissionParams,
 };
 use crate::views::AppView;
+
+
+/// Event to trigger respawn of the individual
+#[derive(Event)]
+pub struct ResetIndividualEvent;
 
 pub fn individual_controls_ui(
     mut contexts: EguiContexts,
     sim_time: Res<SimulationTime>,
     mut speed: ResMut<SimulationSpeed>,
+    mut tx_params: ResMut<TransmissionParams>,
     current_state: Res<State<SimState>>,
     mut next_state: ResMut<NextState<SimState>>,
     mut seed_events: EventWriter<SeedInfectionEvent>,
+    mut reset_events: EventWriter<ResetIndividualEvent>,
     mut next_view: ResMut<NextState<AppView>>,
     mut individual_q: Query<(&mut Individual, &Immunity, Option<&Infection>)>,
 ) {
@@ -49,6 +56,9 @@ pub fn individual_controls_ui(
                         next_state.set(SimState::Running);
                     }
                 }
+                if ui.button("Reset").clicked() {
+                    reset_events.send(ResetIndividualEvent);
+                }
             });
 
             ui.add(egui::Slider::new(&mut speed.multiplier, 0.5..=30.0)
@@ -79,26 +89,7 @@ pub fn individual_controls_ui(
 
                 ui.separator();
 
-                // Current state display
-                ui.heading("Immune State");
-                ui.label(format!("log2(titer): {:.2}", immunity.current_immunity.log2()));
-                ui.label(format!("Titer: {:.1}", immunity.current_immunity));
-
-                if let Some(inf) = infection {
-                    ui.separator();
-                    ui.heading("Active Infection");
-                    ui.label(format!("Strain: {:?}", inf.strain));
-                    ui.label(format!("Serotype: {:?}", inf.serotype));
-                    ui.label(format!("Shedding: {:.2e}", inf.viral_shedding));
-                    ui.label(format!("Shed duration: {:.0} days", inf.shed_duration));
-                    if inf.strain == InfectionStrain::OPV {
-                        ui.label(format!("Mutations: {}/3", inf.mutations));
-                    }
-                }
-
-                ui.separator();
-
-                // Challenge buttons
+                // Challenge buttons (above transient state display)
                 ui.heading("Challenge");
                 ui.horizontal(|ui| {
                     for (label, strain, dose) in [
@@ -118,6 +109,31 @@ pub fn individual_controls_ui(
                         }
                     }
                 });
+
+                // OPV reversion parameters
+                ui.collapsing("OPV Reversion", |ui| {
+                    ui.add(egui::Slider::new(&mut tx_params.mean_reversion_days, 3.0..=30.0)
+                        .text("Mean reversion (days)"));
+                });
+
+                ui.separator();
+
+                // Current state display (transient — at bottom so it doesn't shift elements above)
+                ui.heading("Immune State");
+                ui.label(format!("log2(titer): {:.2}", immunity.current_immunity.log2()));
+                ui.label(format!("Titer: {:.1}", immunity.current_immunity));
+
+                if let Some(inf) = infection {
+                    ui.separator();
+                    ui.heading("Active Infection");
+                    ui.label(format!("Strain: {:?}", inf.strain));
+                    ui.label(format!("Serotype: {:?}", inf.serotype));
+                    ui.label(format!("Shedding: {:.2e}", inf.viral_shedding));
+                    ui.label(format!("Shed duration: {:.0} days", inf.shed_duration));
+                    if inf.strain == InfectionStrain::OPV {
+                        ui.label(format!("Mutations: {}/3", inf.mutations));
+                    }
+                }
             }
         });
 }

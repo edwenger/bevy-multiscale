@@ -9,14 +9,15 @@ use crate::population::{
     PopulationConfig, NeedsPopulationSpawn,
     generate_household_members, calculate_initial_immunity,
 };
-use super::components::ImmunityBar;
+use crate::ui::components::*;
+use crate::ui::viz::immunity_to_fill_color;
 
 /// Visual layout constants
 const NEIGHBORHOOD_SPACING: f32 = 100.0;
 const HOUSEHOLD_GAP: f32 = 15.0;
 const INDIVIDUAL_SPACING: f32 = 14.0;
-const INDIVIDUAL_WIDTH: f32 = 12.0;
-const INDIVIDUAL_HEIGHT: f32 = 12.0;
+const BORDER_SIZE: f32 = 14.0;
+const FILL_SIZE: f32 = 12.0;
 const BAR_WIDTH: f32 = 4.0;
 const GRID_LEFT_MARGIN: f32 = -580.0;
 const GRID_TOP_MARGIN: f32 = 310.0;
@@ -108,51 +109,79 @@ pub fn spawn_population_internal(
                 );
 
                 let age_label = format!("{:.0}{}", age, sex.symbol());
+                let fill_color = immunity_to_fill_color(initial_immunity);
+
                 commands.spawn((
                     Individual::new(*age, *sex, 0.0),
                     Immunity::with_titer(initial_immunity),
                     HouseholdMember { household_id: household_entity },
                     NeighborhoodMember { neighborhood_id: neighborhood_entity },
                     IndividualVisual,
-                    SpriteBundle {
-                        sprite: Sprite {
-                            color: Color::rgb(0.4, 0.4, 0.4),
-                            custom_size: Some(Vec2::new(INDIVIDUAL_WIDTH, INDIVIDUAL_HEIGHT)),
-                            ..default()
-                        },
+                    SpatialBundle {
                         transform: Transform::from_xyz(hh_x + ind_x, nbhd_y, 0.0),
                         ..default()
                     },
                 )).with_children(|parent| {
-                    // Immunity bar
+                    // Border sprite (outer)
+                    parent.spawn((
+                        IndividualBorder,
+                        SpriteBundle {
+                            sprite: Sprite {
+                                color: Color::rgba(0.3, 0.3, 0.3, 0.5),
+                                custom_size: Some(Vec2::new(BORDER_SIZE, BORDER_SIZE)),
+                                ..default()
+                            },
+                            transform: Transform::from_xyz(0.0, 0.0, 0.0),
+                            ..default()
+                        },
+                    ));
+
+                    // Fill sprite (inner)
+                    parent.spawn((
+                        IndividualFill,
+                        SpriteBundle {
+                            sprite: Sprite {
+                                color: fill_color,
+                                custom_size: Some(Vec2::new(FILL_SIZE, FILL_SIZE)),
+                                ..default()
+                            },
+                            transform: Transform::from_xyz(0.0, 0.0, 0.05),
+                            ..default()
+                        },
+                    ));
+
+                    // Immunity bar (left side)
                     let immunity_height = (initial_immunity.log10() * 15.0).max(5.0);
                     parent.spawn((
                         ImmunityBar,
                         SpriteBundle {
                             sprite: Sprite {
-                                color: Color::rgba(0.32, 0.71, 0.89, 0.7),
+                                color: fill_color,
                                 custom_size: Some(Vec2::new(BAR_WIDTH, immunity_height)),
                                 ..default()
                             },
-                            transform: Transform::from_xyz(-3.0, immunity_height / 2.0 + 5.0, 0.1),
+                            transform: Transform::from_xyz(-3.0, immunity_height / 2.0 + 6.0, 0.1),
                             ..default()
                         },
                     ));
 
                     // Age/gender label
-                    parent.spawn(Text2dBundle {
-                        text: Text::from_section(
-                            &age_label,
-                            TextStyle {
-                                font: font.clone(),
-                                font_size: 7.0,
-                                color: Color::rgba(0.9, 0.9, 0.9, 0.7),
-                            },
-                        ),
-                        text_anchor: bevy::sprite::Anchor::Center,
-                        transform: Transform::from_xyz(0.0, 0.0, 0.2),
-                        ..default()
-                    });
+                    parent.spawn((
+                        IndividualLabel,
+                        Text2dBundle {
+                            text: Text::from_section(
+                                &age_label,
+                                TextStyle {
+                                    font: font.clone(),
+                                    font_size: 7.0,
+                                    color: Color::rgba(0.15, 0.15, 0.15, 0.85),
+                                },
+                            ),
+                            text_anchor: bevy::sprite::Anchor::Center,
+                            transform: Transform::from_xyz(0.0, 0.0, 0.2),
+                            ..default()
+                        },
+                    ));
                 });
             }
 

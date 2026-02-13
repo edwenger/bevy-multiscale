@@ -1,6 +1,4 @@
 pub mod bari;
-mod camera;
-mod chart;
 mod components;
 mod controls;
 mod spawn;
@@ -10,6 +8,7 @@ use bevy::prelude::*;
 
 use crate::population::{PopulationConfig, NeedsPopulationSpawn, handle_reset_population};
 use crate::ui::{spawn_transmission_arcs, update_transmission_arcs, individual_tooltip};
+use crate::ui::camera::{CameraState, camera_zoom_system, camera_pan_system};
 use super::AppView;
 
 pub struct RegionViewPlugin;
@@ -19,8 +18,8 @@ impl Plugin for RegionViewPlugin {
         app.add_systems(OnEnter(AppView::Region), enter_region)
             .add_systems(OnExit(AppView::Region), exit_region)
             .add_systems(Update, (
-                camera::camera_zoom_system,
-                camera::camera_pan_system,
+                camera_zoom_system,
+                camera_pan_system,
                 controls::region_controls_ui,
                 viz::update_individual_visuals,
                 viz::update_bari_visuals,
@@ -29,7 +28,7 @@ impl Plugin for RegionViewPlugin {
                 spawn_transmission_arcs,
                 update_transmission_arcs,
                 individual_tooltip,
-                chart::infection_chart_ui,
+                crate::ui::chart::infection_chart_ui,
                 handle_reset_population,
                 spawn::respawn_region_population.run_if(resource_exists::<NeedsPopulationSpawn>),
             ).run_if(in_state(AppView::Region)));
@@ -50,7 +49,7 @@ fn enter_region(
     // Insert BariLayout resource
     let layout = bari::BariLayout::from_csv();
 
-    commands.insert_resource(camera::CameraState::default());
+    commands.insert_resource(CameraState::default());
 
     // Spawn population
     let mut rng = rand::thread_rng();
@@ -77,9 +76,6 @@ fn auto_center_camera(
     let cx: f32 = bari_layout.positions.iter().map(|p| p.x).sum::<f32>() / n;
     let cy: f32 = bari_layout.positions.iter().map(|p| p.y).sum::<f32>() / n;
 
-    transform.translation.x = cx;
-    transform.translation.y = cy;
-
     let min_x = bari_layout.positions.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
     let max_x = bari_layout.positions.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
     let min_y = bari_layout.positions.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
@@ -87,6 +83,10 @@ fn auto_center_camera(
 
     let span_x = (max_x - min_x) + 200.0;
     let span_y = (max_y - min_y) + 150.0;
+
+    transform.translation.x = cx;
+    // Shift down so top baris aren't clipped
+    transform.translation.y = cy + 0.05 * span_y;
 
     let scale_x = span_x / 1200.0;
     let scale_y = span_y / 900.0;
@@ -98,7 +98,7 @@ fn exit_region(
     mut cameras: Query<(&mut Transform, &mut OrthographicProjection), With<Camera2d>>,
 ) {
     commands.remove_resource::<bari::BariLayout>();
-    commands.remove_resource::<camera::CameraState>();
+    commands.remove_resource::<CameraState>();
 
     // Reset camera
     if let Ok((mut transform, mut projection)) = cameras.get_single_mut() {

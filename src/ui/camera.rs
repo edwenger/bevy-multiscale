@@ -29,7 +29,7 @@ pub fn camera_zoom_system(
     let Ok(mut proj) = projection.get_single_mut() else { return };
 
     for event in scroll_events.read() {
-        let zoom_delta = -event.y * 0.1;
+        let zoom_delta = -event.y * 0.025;
         proj.scale = (proj.scale + zoom_delta * proj.scale).clamp(0.2, 10.0);
     }
 }
@@ -44,10 +44,10 @@ pub fn camera_pan_system(
     let Ok(window) = windows.get_single() else { return };
     let Ok((mut transform, projection)) = camera_query.get_single_mut() else { return };
 
-    let over_egui = contexts.ctx_mut().is_pointer_over_area();
+    let egui_wants_pointer = contexts.ctx_mut().wants_pointer_input();
 
     let pan_button_pressed = mouse_button.pressed(MouseButton::Middle)
-        || (mouse_button.pressed(MouseButton::Left) && !over_egui);
+        || (mouse_button.pressed(MouseButton::Left) && !egui_wants_pointer);
 
     if pan_button_pressed {
         if let Some(cursor_pos) = window.cursor_position() {

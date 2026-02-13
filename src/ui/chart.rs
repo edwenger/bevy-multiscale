@@ -12,7 +12,7 @@ pub fn infection_chart_ui(
     let ctx = contexts.ctx_mut();
 
     egui::Window::new("Daily New Infections")
-        .default_pos(egui::pos2(300.0, 500.0))
+        .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-10.0, -10.0))
         .default_size(egui::vec2(600.0, 200.0))
         .collapsible(true)
         .resizable(true)

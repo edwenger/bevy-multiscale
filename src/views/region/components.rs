@@ -1,17 +1,5 @@
 use bevy::prelude::*;
 
-/// Marker on outer sprite (border) — shows shedding status
-#[derive(Component)]
-pub struct IndividualBorder;
-
-/// Marker on inner sprite (fill) — shows immunity level
-#[derive(Component)]
-pub struct IndividualFill;
-
-/// Marker on age/sex text label
-#[derive(Component)]
-pub struct IndividualLabel;
-
 /// Layout indices for live repositioning when bari_radius changes
 #[derive(Component)]
 pub struct BariLayoutIndex {

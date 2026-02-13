@@ -3,28 +3,9 @@ use bevy::prelude::*;
 
 use crate::disease::{Immunity, Infection, InfectionStrain};
 use crate::population::{Individual, Neighborhood, NeighborhoodMember};
+use crate::ui::components::*;
+use crate::ui::viz::{gradient_brown_beige_green, immunity_to_fill_color, shedding_border_color};
 use super::components::*;
-
-/// 3-stop gradient: brown (t=0) -> beige (t=0.5) -> green (t=1.0)
-fn gradient_brown_beige_green(t: f32) -> Color {
-    let (r, g, b) = if t < 0.5 {
-        let s = t / 0.5;
-        (0.55 + s * (0.96 - 0.55),
-         0.35 + s * (0.90 - 0.35),
-         0.15 + s * (0.75 - 0.15))
-    } else {
-        let s = (t - 0.5) / 0.5;
-        (0.96 + s * (0.2 - 0.96),
-         0.90 + s * (0.75 - 0.90),
-         0.75 + s * (0.3 - 0.75))
-    };
-    Color::rgb(r, g, b)
-}
-
-fn immunity_to_fill_color(titer: f32) -> Color {
-    let t = (titer.log2() / 10.0).clamp(0.0, 1.0);
-    gradient_brown_beige_green(t)
-}
 
 fn bari_immunity_to_fill_color(titer: f32) -> Color {
     let t = ((titer.log2() - 2.0) / 6.0).clamp(0.0, 1.0);
@@ -42,6 +23,7 @@ pub fn update_individual_visuals(
 
     for (immunity, children, infection) in individuals.iter() {
         let fill_color = immunity_to_fill_color(immunity.current_immunity);
+        let (border_color, border_size) = shedding_border_color(infection, 5.0);
 
         for &child in children.iter() {
             if let Ok(mut fill_sprite) = fills.get_mut(child) {
@@ -49,25 +31,9 @@ pub fn update_individual_visuals(
             }
 
             if let Ok((mut border_sprite, mut border_transform)) = borders.get_mut(child) {
-                if let Some(inf) = infection {
-                    let base_color = match inf.strain {
-                        InfectionStrain::WPV  => Color::rgb(0.9, 0.15, 0.15),
-                        InfectionStrain::VDPV => Color::rgb(1.0, 0.6, 0.0),
-                        InfectionStrain::OPV  => Color::rgb(0.0, 0.85, 0.85),
-                    };
-                    let log_shed = inf.viral_shedding.log10().clamp(2.0, 8.0);
-                    let t = (log_shed - 2.0) / 6.0;
-                    let alpha = 0.3 + 0.7 * t;
-                    border_sprite.color = base_color.with_a(alpha);
-                    let thickness = 0.5 + 1.0 * t;
-                    let outer_size = 4.0 + 2.0 * thickness;
-                    border_sprite.custom_size = Some(Vec2::new(outer_size, outer_size));
-                    border_transform.scale = Vec3::ONE;
-                } else {
-                    border_sprite.color = Color::rgba(0.3, 0.3, 0.3, 0.5);
-                    border_sprite.custom_size = Some(Vec2::new(5.0, 5.0));
-                    border_transform.scale = Vec3::ONE;
-                }
+                border_sprite.color = border_color;
+                border_sprite.custom_size = Some(Vec2::new(border_size, border_size));
+                border_transform.scale = Vec3::ONE;
             }
         }
     }

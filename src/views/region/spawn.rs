@@ -11,6 +11,8 @@ use crate::population::{
     PopulationConfig, NeedsPopulationSpawn,
     generate_household_members, calculate_initial_immunity,
 };
+use crate::ui::components::*;
+use crate::ui::viz::immunity_to_fill_color;
 use super::bari::BariLayout;
 use super::components::*;
 
@@ -257,14 +259,7 @@ pub fn spawn_region_population_internal(
                     ));
 
                     // Fill sprite (inner)
-                    let fill_t = (initial_immunity.log2() / 10.0).clamp(0.0, 1.0);
-                    let fill_color = if fill_t < 0.5 {
-                        let s = fill_t / 0.5;
-                        Color::rgb(0.55 + s * 0.41, 0.35 + s * 0.55, 0.15 + s * 0.60)
-                    } else {
-                        let s = (fill_t - 0.5) / 0.5;
-                        Color::rgb(0.96 + s * (0.2 - 0.96), 0.90 + s * (0.75 - 0.90), 0.75 + s * (0.3 - 0.75))
-                    };
+                    let fill_color = immunity_to_fill_color(initial_immunity);
                     parent.spawn((
                         IndividualFill,
                         SpriteBundle {
@@ -287,7 +282,7 @@ pub fn spawn_region_population_internal(
                                 TextStyle {
                                     font: font.clone(),
                                     font_size: 5.0,
-                                    color: Color::rgba(0.9, 0.9, 0.9, 0.7),
+                                    color: Color::rgba(0.15, 0.15, 0.15, 0.85),
                                 },
                             ),
                             text_anchor: bevy::sprite::Anchor::Center,

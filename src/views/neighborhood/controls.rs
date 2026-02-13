@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 
+use crate::disease::{InfectionStrain, InfectionSerotype};
 use crate::population::{PopulationConfig, ResetPopulationEvent};
 use crate::simulation::{
     SimulationTime, SimulationSpeed, SimState,
@@ -85,6 +86,8 @@ pub fn neighborhood_controls_ui(
                     if ui.add(egui::Slider::new(&mut log_dose, -7.0..=-3.0).text("Log10 F-O dose")).changed() {
                         tx_params.fecal_oral_dose = 10f32.powf(log_dose);
                     }
+                    ui.add(egui::Slider::new(&mut tx_params.opv_shedding_reduction, 0.1..=1.0).text("OPV shed reduction"));
+                    ui.add(egui::Slider::new(&mut tx_params.mean_reversion_days, 3.0..=30.0).text("Mean reversion (days)"));
                 });
 
             ui.collapsing("Population (on reset)", |ui| {
@@ -114,6 +117,26 @@ pub fn neighborhood_controls_ui(
                         for (label, count) in [("Seed 1", 1), ("Seed 5", 5), ("Seed 10", 10)] {
                             if ui.button(label).clicked() {
                                 seed_events.send(SeedInfectionEvent { count, dose: 1e6, ..default() });
+                            }
+                        }
+                    });
+                });
+
+            egui::CollapsingHeader::new("OPV Campaign (under 5s)")
+                .default_open(true)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        for (label, cov) in [("OPV 20%", 0.2), ("OPV 50%", 0.5), ("OPV 80%", 0.8)] {
+                            if ui.button(label).clicked() {
+                                seed_events.send(SeedInfectionEvent {
+                                    dose: 1e6,
+                                    min_age: 0.0,
+                                    max_age: 5.0,
+                                    strain: Some(InfectionStrain::OPV),
+                                    serotype: Some(InfectionSerotype::Type2),
+                                    coverage: Some(cov),
+                                    ..default()
+                                });
                             }
                         }
                     });
