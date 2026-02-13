@@ -19,7 +19,7 @@ pub fn update_individual_visuals(
     mut borders: Query<(&mut Sprite, &mut Transform), (With<IndividualBorder>, Without<IndividualFill>, Without<BariFill>, Without<BariBorder>)>,
     mut timings: ResMut<crate::simulation::SystemTimings>,
 ) {
-    let t0 = std::time::Instant::now();
+    let t0 = bevy::utils::Instant::now();
 
     for (immunity, children, infection) in individuals.iter() {
         let fill_color = immunity_to_fill_color(immunity.current_immunity);
@@ -62,7 +62,7 @@ pub fn update_bari_visuals(
     mut borders: Query<&mut Sprite, (With<BariBorder>, Without<BariFill>, Without<IndividualFill>, Without<IndividualBorder>)>,
     mut timings: ResMut<crate::simulation::SystemTimings>,
 ) {
-    let t0 = std::time::Instant::now();
+    let t0 = bevy::utils::Instant::now();
 
     let mut nbhd_data: HashMap<Entity, (f32, usize, f32, f32, f32)> = HashMap::new();
 

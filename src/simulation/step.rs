@@ -20,7 +20,7 @@ pub fn step_disease_state(
         return;
     }
 
-    let t0 = std::time::Instant::now();
+    let t0 = bevy::utils::Instant::now();
     let mut rng = rand::thread_rng();
 
     for (entity, individual, mut immunity, infection) in query.iter_mut() {

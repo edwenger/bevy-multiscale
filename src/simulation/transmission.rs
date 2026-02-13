@@ -81,7 +81,7 @@ pub fn transmission_system(
         return;
     }
 
-    let t0 = std::time::Instant::now();
+    let t0 = bevy::utils::Instant::now();
 
     let mut rng = rand::thread_rng();
 
