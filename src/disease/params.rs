@@ -29,6 +29,12 @@ impl Default for DiseaseParams {
                 strain_take_modifier: wpv_take_mod,
                 shed_duration: wpv_duration.clone(),
             });
+            // VDPV uses WPV-level parameters
+            strain_params.insert((VDPV, sero), StrainParams {
+                sabin_scale_parameter: wpv_sabin_scale,
+                strain_take_modifier: wpv_take_mod,
+                shed_duration: wpv_duration.clone(),
+            });
         }
 
         strain_params.insert((OPV, Type1), StrainParams {
