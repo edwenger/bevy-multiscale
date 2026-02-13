@@ -2,7 +2,6 @@ use bevy::prelude::*;
 use bevy::input::mouse::{MouseWheel, MouseButton};
 use bevy_egui::EguiContexts;
 
-/// Resource tracking camera zoom/pan state
 #[derive(Resource)]
 pub struct CameraState {
     pub is_panning: bool,
@@ -18,13 +17,11 @@ impl Default for CameraState {
     }
 }
 
-/// Zoom camera with mouse wheel, clamped to 0.2..5.0
 pub fn camera_zoom_system(
     mut scroll_events: EventReader<MouseWheel>,
     mut projection: Query<&mut OrthographicProjection, With<Camera2d>>,
     mut contexts: EguiContexts,
 ) {
-    // Don't zoom when egui is actively using pointer input (e.g. scrollable panels)
     if contexts.ctx_mut().wants_pointer_input() {
         return;
     }
@@ -37,7 +34,6 @@ pub fn camera_zoom_system(
     }
 }
 
-/// Pan camera with middle-click drag (or left-click when not over egui)
 pub fn camera_pan_system(
     mouse_button: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
@@ -50,7 +46,6 @@ pub fn camera_pan_system(
 
     let over_egui = contexts.ctx_mut().is_pointer_over_area();
 
-    // Start panning on middle-click, or left-click when not over egui
     let pan_button_pressed = mouse_button.pressed(MouseButton::Middle)
         || (mouse_button.pressed(MouseButton::Left) && !over_egui);
 
@@ -58,7 +53,6 @@ pub fn camera_pan_system(
         if let Some(cursor_pos) = window.cursor_position() {
             if let Some(last_pos) = camera_state.last_cursor_pos {
                 let delta = cursor_pos - last_pos;
-                // Move camera opposite to cursor movement, scaled by zoom
                 transform.translation.x -= delta.x * projection.scale;
                 transform.translation.y += delta.y * projection.scale;
             }

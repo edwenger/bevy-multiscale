@@ -30,7 +30,6 @@ pub struct InfectionTimeSeries {
     pub daily_vdpv: VecDeque<u32>,
     pub daily_wpv: VecDeque<u32>,
     pub start_day: u32,
-    /// Accumulators for current simulation day
     pub pending_opv: u32,
     pub pending_vdpv: u32,
     pub pending_wpv: u32,
@@ -54,7 +53,6 @@ impl Default for InfectionTimeSeries {
 
 const MAX_CHART_DAYS: usize = 365;
 
-/// Accumulate transmission events into pending counts
 fn record_infections(
     mut time_series: ResMut<InfectionTimeSeries>,
     mut events: EventReader<TransmissionEvent>,
@@ -68,7 +66,6 @@ fn record_infections(
     }
 }
 
-/// Flush pending counts into the rolling VecDeque when simulation day advances
 fn flush_daily_counts(
     mut time_series: ResMut<InfectionTimeSeries>,
     sim_time: Res<SimulationTime>,
@@ -80,12 +77,10 @@ fn flush_daily_counts(
     let current_day = sim_time.day;
     let ts = time_series.as_mut();
 
-    // Copy pending values to avoid borrow conflicts
     let p_opv = ts.pending_opv;
     let p_vdpv = ts.pending_vdpv;
     let p_wpv = ts.pending_wpv;
 
-    // Fill any skipped days with zeros, then push current pending
     while ts.last_flushed_day < current_day {
         let is_current = ts.last_flushed_day == current_day - 1;
         if is_current {
@@ -99,7 +94,6 @@ fn flush_daily_counts(
         }
         ts.last_flushed_day += 1;
 
-        // Trim to rolling window
         if ts.daily_opv.len() > MAX_CHART_DAYS {
             ts.daily_opv.pop_front();
             ts.daily_vdpv.pop_front();
@@ -108,7 +102,6 @@ fn flush_daily_counts(
         }
     }
 
-    // Reset accumulators
     ts.pending_opv = 0;
     ts.pending_vdpv = 0;
     ts.pending_wpv = 0;

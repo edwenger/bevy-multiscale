@@ -6,7 +6,7 @@ use bevy_egui::EguiPlugin;
 use bevy_multiscale::disease;
 use bevy_multiscale::population;
 use bevy_multiscale::simulation;
-use bevy_multiscale::ui;
+use bevy_multiscale::views;
 
 fn main() {
     #[cfg(not(target_arch = "wasm32"))]
@@ -28,7 +28,7 @@ fn main() {
         .add_plugins(disease::DiseasePlugin)
         .add_plugins(population::PopulationPlugin)
         .add_plugins(simulation::SimulationPlugin)
-        .add_plugins(ui::UiPlugin)
+        .add_plugins(views::ViewPlugin)
         .add_systems(Startup, setup_camera)
         .run();
 }

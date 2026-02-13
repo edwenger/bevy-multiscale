@@ -4,7 +4,6 @@ use egui_plot::{Plot, Bar, BarChart};
 
 use crate::simulation::{InfectionTimeSeries, SimulationTime};
 
-/// Render a stacked bar chart of daily new infections by strain
 pub fn infection_chart_ui(
     mut contexts: EguiContexts,
     time_series: Res<InfectionTimeSeries>,
@@ -24,7 +23,6 @@ pub fn infection_chart_ui(
                 return;
             }
 
-            // Build stacked bars: WPV on bottom, VDPV middle, OPV top
             let mut wpv_bars = Vec::with_capacity(n);
             let mut vdpv_bars = Vec::with_capacity(n);
             let mut opv_bars = Vec::with_capacity(n);
@@ -35,11 +33,8 @@ pub fn infection_chart_ui(
                 let vdpv = time_series.daily_vdpv[i] as f64;
                 let opv = time_series.daily_opv[i] as f64;
 
-                // WPV at base
                 wpv_bars.push(Bar::new(day, wpv).width(0.8));
-                // VDPV stacked on WPV
                 vdpv_bars.push(Bar::new(day, vdpv).width(0.8).base_offset(wpv));
-                // OPV stacked on WPV + VDPV
                 opv_bars.push(Bar::new(day, opv).width(0.8).base_offset(wpv + vdpv));
             }
 
