@@ -63,7 +63,7 @@ fn enter_region(
     commands.insert_resource(layout);
 }
 
-fn auto_center_camera(
+pub(super) fn auto_center_camera(
     bari_layout: &bari::BariLayout,
     cameras: &mut Query<(&mut Transform, &mut OrthographicProjection), With<Camera2d>>,
 ) {
@@ -85,7 +85,6 @@ fn auto_center_camera(
     let span_y = (max_y - min_y) + 150.0;
 
     transform.translation.x = cx;
-    // Shift down so top baris aren't clipped
     transform.translation.y = cy + 0.05 * span_y;
 
     let scale_x = span_x / 1200.0;

@@ -73,37 +73,6 @@ fn create_circle_image(size: u32) -> Image {
     )
 }
 
-/// Auto-center camera to fit all bari positions
-fn auto_center_camera(
-    bari_layout: &BariLayout,
-    cameras: &mut Query<(&mut Transform, &mut OrthographicProjection), With<Camera2d>>,
-) {
-    if bari_layout.positions.is_empty() {
-        return;
-    }
-
-    let Ok((mut transform, mut projection)) = cameras.get_single_mut() else { return };
-
-    let n = bari_layout.positions.len() as f32;
-    let cx: f32 = bari_layout.positions.iter().map(|p| p.x).sum::<f32>() / n;
-    let cy: f32 = bari_layout.positions.iter().map(|p| p.y).sum::<f32>() / n;
-
-    transform.translation.x = cx;
-    transform.translation.y = cy;
-
-    let min_x = bari_layout.positions.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
-    let max_x = bari_layout.positions.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
-    let min_y = bari_layout.positions.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
-    let max_y = bari_layout.positions.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
-
-    let span_x = (max_x - min_x) + 200.0;
-    let span_y = (max_y - min_y) + 150.0;
-
-    let scale_x = span_x / 1200.0;
-    let scale_y = span_y / 900.0;
-    projection.scale = scale_x.max(scale_y).max(0.5).min(10.0);
-}
-
 /// Respawn population after reset
 pub fn respawn_region_population(
     mut commands: Commands,
@@ -118,7 +87,7 @@ pub fn respawn_region_population(
         commands.remove_resource::<NeedsPopulationSpawn>();
         let mut rng = rand::thread_rng();
         spawn_region_population_internal(&mut commands, &config, &bari_layout, &mut rng, &asset_server, &mut images);
-        auto_center_camera(&bari_layout, &mut cameras);
+        super::auto_center_camera(&bari_layout, &mut cameras);
     }
 }
 

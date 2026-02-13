@@ -46,10 +46,9 @@ fn enter_neighborhood(
 
     commands.insert_resource(CameraState::default());
 
-    // Start more zoomed in and shift down so all neighborhoods are visible
+    // Initial camera: zoom in for readable labels, center on the grid
     if let Ok((mut transform, mut proj)) = cameras.get_single_mut() {
         proj.scale = 0.65;
-        // Center on grid
         transform.translation.x = -150.0;
         transform.translation.y = 160.0;
     }

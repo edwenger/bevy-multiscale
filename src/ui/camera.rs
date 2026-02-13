@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy::input::mouse::{MouseWheel, MouseButton};
+use bevy::input::mouse::MouseWheel;
 use bevy_egui::EguiContexts;
 
 #[derive(Resource)]
