@@ -39,8 +39,9 @@ pub fn neighborhood_controls_ui(
             }
         });
 
+    let screen = ctx.screen_rect();
     egui::Window::new("Simulation Controls")
-        .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-10.0, 10.0))
+        .default_pos(egui::pos2(screen.max.x - 270.0, 10.0))
         .default_width(250.0)
         .show(ctx, |ui| {
             ui.heading(format!("Day: {}", sim_time.day));

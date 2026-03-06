@@ -164,8 +164,9 @@ pub fn individual_chart_ui(
 ) {
     let ctx = contexts.ctx_mut();
 
+    let screen = ctx.screen_rect();
     egui::Window::new("Immune Response")
-        .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-10.0, -10.0))
+        .default_pos(egui::pos2(screen.max.x - 720.0, screen.max.y - 320.0))
         .default_size(egui::vec2(700.0, 300.0))
         .collapsible(true)
         .resizable(true)
