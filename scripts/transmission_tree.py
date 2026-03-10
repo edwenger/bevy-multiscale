@@ -16,9 +16,11 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.lines as mlines
 
 
 LEVEL_COLORS = {
@@ -42,7 +44,7 @@ def build_tree(df):
     # were infected, so we can find the "active infection" of a source.
     individual_infections = defaultdict(list)  # entity_id -> [(day, node_id)]
 
-    nodes = {}  # node_id -> {day, individual, age, level}
+    nodes = {}  # node_id -> {day, individual, age, level, log2_titer}
     children = defaultdict(list)  # node_id -> [child_node_ids]
 
     # First pass: identify seed cases (sources that appear before any
@@ -68,16 +70,18 @@ def build_tree(df):
                 "individual": src,
                 "age": None,  # filled below
                 "level": "seed",
+                "log2_titer": None,  # filled below
             }
             individual_infections[src].append((first_src_day - 1, seed_node_id))
             seed_node_id -= 1
 
-    # Fill seed ages from first appearance as source
+    # Fill seed ages and titers from first appearance as source
     for _, row in df.iterrows():
         src = int(row["source_id"])
         for nid, info in nodes.items():
             if info["individual"] == src and info["age"] is None:
                 info["age"] = row["source_age"]
+                info["log2_titer"] = row.get("source_log2_titer")
 
     # Second pass: create a node per transmission row and link to parent
     for idx, row in df.iterrows():
@@ -91,6 +95,7 @@ def build_tree(df):
             "individual": tgt,
             "age": row["target_age"],
             "level": row["level"],
+            "log2_titer": row.get("target_log2_titer"),
         }
         individual_infections[tgt].append((day, node_id))
 
@@ -175,37 +180,65 @@ def plot_tree(csv_path, ax=None):
             ax.plot([px, mid_x, mid_x, cx], [py, py, cy, cy],
                     color=color, linewidth=0.8, alpha=0.5, zorder=1)
 
+    # Compute titer tercile thresholds
+    titers = [info["log2_titer"] for info in nodes.values()
+              if info["log2_titer"] is not None and not np.isnan(info["log2_titer"])]
+    if titers:
+        t33, t67 = np.percentile(titers, [33.3, 66.7])
+    else:
+        t33, t67 = 0.0, 0.0
+
+    def titer_marker(log2_titer):
+        """Map titer tercile to marker: low=square, mid=filled circle, high=open circle."""
+        if log2_titer is None or np.isnan(log2_titer):
+            return "o", True   # default filled
+        if log2_titer <= t33:
+            return "s", True   # square (lowest tercile)
+        elif log2_titer <= t67:
+            return "o", True   # filled circle (middle tercile)
+        else:
+            return "o", False  # open circle (highest tercile)
+
     # Draw nodes
     for nid in y_pos:
         info = nodes[nid]
         level = info["level"]
         color = LEVEL_COLORS.get(level, "#2c3e50")
-        marker = "s" if level == "seed" else "o"
-        ax.scatter(info["day"], y_pos[nid], c=color, s=20, zorder=2,
-                   edgecolors="white", linewidths=0.3, marker=marker)
+        marker, filled = titer_marker(info.get("log2_titer"))
+        if filled:
+            ax.scatter(info["day"], y_pos[nid], c=color, s=20, zorder=2,
+                       edgecolors="white", linewidths=0.3, marker=marker)
+        else:
+            ax.scatter(info["day"], y_pos[nid], c="none", s=20, zorder=2,
+                       edgecolors=color, linewidths=1.0, marker=marker)
 
-    # Age labels for leaf nodes
-    all_children_set = set()
-    for kids in children.values():
-        all_children_set.update(kids)
+    # Age labels for all nodes
     for nid in y_pos:
-        if nid not in children or not children[nid]:
-            age = nodes[nid].get("age")
-            if age is not None:
-                ax.annotate(
-                    f"{age:.0f}y", (nodes[nid]["day"], y_pos[nid]),
-                    xytext=(4, 0), textcoords="offset points",
-                    fontsize=5, color="#888888", va="center",
-                )
+        age = nodes[nid].get("age")
+        if age is not None:
+            ax.annotate(
+                f"{age:.0f}y", (nodes[nid]["day"], y_pos[nid]),
+                xytext=(4, 0), textcoords="offset points",
+                fontsize=5, color="#888888", va="center",
+            )
 
-    # Legend
-    handles = [
+    # Legend: contact level (colors) + titer tercile (markers)
+    level_handles = [
         mpatches.Patch(color=LEVEL_COLORS["seed"], label="Seed"),
         mpatches.Patch(color=LEVEL_COLORS["household"], label="Household"),
         mpatches.Patch(color=LEVEL_COLORS["neighborhood"], label="Neighborhood"),
         mpatches.Patch(color=LEVEL_COLORS["village"], label="Village"),
     ]
-    ax.legend(handles=handles, loc="upper left", fontsize=8)
+    titer_handles = [
+        mlines.Line2D([], [], color="gray", marker="s", linestyle="None",
+                       markersize=5, label=f"Low titer (\u2264{t33:.1f})"),
+        mlines.Line2D([], [], color="gray", marker="o", linestyle="None",
+                       markersize=5, label=f"Mid titer ({t33:.1f}\u2013{t67:.1f})"),
+        mlines.Line2D([], [], color="gray", marker="o", linestyle="None",
+                       markersize=5, markerfacecolor="none", markeredgewidth=1.0,
+                       label=f"High titer (>{t67:.1f})"),
+    ]
+    ax.legend(handles=level_handles + titer_handles, loc="upper left", fontsize=8)
 
     ax.set_xlabel("Day")
     ax.set_yticks([])

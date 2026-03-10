@@ -13,7 +13,7 @@ use bevy::app::AppExit;
 use bevy::prelude::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use crate::disease::{Infection, InfectionStrain};
+use crate::disease::{Immunity, Infection, InfectionStrain};
 use crate::population::Individual;
 
 #[derive(Resource, Default)]
@@ -55,6 +55,8 @@ pub struct TransmissionRecord {
     pub target_id: u32,
     pub source_age: f32,
     pub target_age: f32,
+    pub source_log2_titer: f32,
+    pub target_log2_titer: f32,
     pub level: String,
     pub strain: String,
 }
@@ -69,7 +71,7 @@ pub struct TransmissionLog {
 fn log_transmissions(
     mut events: EventReader<TransmissionEvent>,
     sim_time: Res<SimulationTime>,
-    individuals: Query<&Individual>,
+    individuals: Query<(&Individual, &Immunity)>,
     log: Option<ResMut<TransmissionLog>>,
 ) {
     let Some(mut log) = log else { return; };
@@ -78,8 +80,12 @@ fn log_transmissions(
     }
 
     for ev in events.read() {
-        let source_age = individuals.get(ev.source).map(|i| i.age).unwrap_or(0.0);
-        let target_age = individuals.get(ev.target).map(|i| i.age).unwrap_or(0.0);
+        let (source_age, source_log2_titer) = individuals.get(ev.source)
+            .map(|(i, imm)| (i.age, imm.prechallenge_immunity.log2()))
+            .unwrap_or((0.0, 0.0));
+        let (target_age, target_log2_titer) = individuals.get(ev.target)
+            .map(|(i, imm)| (i.age, imm.prechallenge_immunity.log2()))
+            .unwrap_or((0.0, 0.0));
         let level = match ev.level {
             TransmissionLevel::Household => "household",
             TransmissionLevel::Neighborhood => "neighborhood",
@@ -91,6 +97,8 @@ fn log_transmissions(
             target_id: ev.target.index(),
             source_age,
             target_age,
+            source_log2_titer,
+            target_log2_titer,
             level: level.to_string(),
             strain: format!("{:?}", ev.strain),
         });
@@ -117,7 +125,7 @@ fn check_stop_condition(
         // Write CSV output
         let path = &config.output_path;
         if let Ok(mut wtr) = csv::Writer::from_path(path) {
-            let _ = wtr.write_record(&["day", "source_id", "target_id", "source_age", "target_age", "level", "strain"]);
+            let _ = wtr.write_record(&["day", "source_id", "target_id", "source_age", "target_age", "source_log2_titer", "target_log2_titer", "level", "strain"]);
             for rec in &log.records {
                 let _ = wtr.write_record(&[
                     rec.day.to_string(),
@@ -125,6 +133,8 @@ fn check_stop_condition(
                     rec.target_id.to_string(),
                     format!("{:.1}", rec.source_age),
                     format!("{:.1}", rec.target_age),
+                    format!("{:.2}", rec.source_log2_titer),
+                    format!("{:.2}", rec.target_log2_titer),
                     rec.level.clone(),
                     rec.strain.clone(),
                 ]);

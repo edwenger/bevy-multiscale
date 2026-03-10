@@ -33,12 +33,13 @@ Visualizes the infection chain from a single simulation CSV as a branching tree:
 - **x-axis** = day of infection
 - **y-axis** = tree layout (children spread vertically from their parent)
 - **Edges** colored by contact level: household (red), neighborhood (orange), village (blue)
-- **Seed cases** shown as black squares; leaf nodes labeled with age
+- **Node markers** encode pre-challenge immunity terciles: squares (low titer), filled circles (mid), open circles (high)
+- All nodes labeled with age
 
 ```bash
-python scripts/transmission_tree.py output/seed2_dose5e-05.csv
+python scripts/transmission_tree.py output/seed0_dose1e-04.csv
 ```
 
 Handles re-infections correctly by treating each transmission event as a unique node.
 
-![Transmission tree for seed=2, dose=5e-05](examples/seed2_dose5e-05.tree.png)
+![Transmission tree for seed=0, dose=1e-04](examples/seed0_dose1e-04.tree.png)
