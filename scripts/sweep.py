@@ -2,7 +2,8 @@
 """Parameter sweep for headless polio simulation.
 
 Runs all combinations of random_seed × fecal_oral_dose,
-parses transmission CSVs, and plots epidemic curves.
+parses transmission CSVs, and plots weekly epidemic curves
+with faint individual traces and bold seed-averaged lines.
 """
 
 import itertools
@@ -12,12 +13,13 @@ import tempfile
 from pathlib import Path
 
 import yaml
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 # Sweep parameters
-SEEDS = list(range(5))
-DOSES = [1e-5, 3e-5, 1e-4]
+SEEDS = list(range(10))
+DOSES = [1e-5, 2e-5, 5e-5, 1e-4]
 
 BASE_CONFIG = Path(__file__).parent.parent / "config" / "base_params.yaml"
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
@@ -42,7 +44,7 @@ def run_sweep():
     combos = list(itertools.product(SEEDS, DOSES))
     print(f"Running {len(combos)} simulations...")
 
-    for seed, dose in combos:
+    for i, (seed, dose) in enumerate(combos):
         params = {**base, "random_seed": seed, "fecal_oral_dose": dose}
         out_csv = OUTPUT_DIR / f"seed{seed}_dose{dose:.0e}.csv"
 
@@ -58,38 +60,70 @@ def run_sweep():
         finally:
             os.unlink(tmp_path)
 
+        if (i + 1) % 10 == 0:
+            print(f"  {i + 1}/{len(combos)} complete")
+
     print("All runs complete. Generating plot...")
-    plot_results()
+    plot_results(base.get("simulation_end_time", 365))
 
 
-def plot_results():
+def plot_results(end_time=365):
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    dose_colors = {1e-5: "C0", 3e-5: "C1", 1e-4: "C2"}
-    dose_labels_used = set()
+    dose_colors = {1e-5: "C0", 2e-5: "C1", 5e-5: "C2", 1e-4: "C3"}
+    num_weeks = end_time // 7
 
-    for csv_path in sorted(OUTPUT_DIR.glob("*.csv")):
-        # Parse seed and dose from filename
+    # Collect weekly series grouped by dose
+    dose_weekly = {dose: [] for dose in DOSES}
+
+    for csv_path in sorted(OUTPUT_DIR.glob("seed*_dose*.csv")):
         name = csv_path.stem
         parts = name.split("_")
-        dose_str = parts[1].replace("dose", "")
-        dose = float(dose_str)
-        color = dose_colors.get(dose, "gray")
+        dose = float(parts[1].replace("dose", ""))
+        if dose not in dose_weekly:
+            continue
 
         df = pd.read_csv(csv_path)
         if df.empty:
+            weekly = pd.Series(0, index=range(num_weeks), dtype=float)
+        else:
+            df["week"] = df["day"] // 7
+            weekly = df.groupby("week").size()
+            weekly = weekly.reindex(range(num_weeks), fill_value=0).astype(float)
+
+        dose_weekly[dose].append(weekly)
+
+    # Plot individual traces (faint) and averages (bold)
+    for dose in DOSES:
+        traces = dose_weekly[dose]
+        if not traces:
             continue
 
-        daily = df.groupby("day").size()
-        daily = daily.reindex(range(int(daily.index.max()) + 1), fill_value=0)
+        color = dose_colors.get(dose, "gray")
 
-        label = f"dose={dose:.0e}" if dose not in dose_labels_used else None
-        dose_labels_used.add(dose)
-        ax.plot(daily.index, daily.values, color=color, alpha=0.5, label=label)
+        # Faint individual traces
+        for trace in traces:
+            ax.plot(trace.index, trace.values, color=color, alpha=0.15, linewidth=0.8)
 
-    ax.set_xlabel("Day")
-    ax.set_ylabel("Daily transmissions")
-    ax.set_title("Epidemic curves across parameter sweep")
+        # Bold average line
+        stacked = np.column_stack([t.values for t in traces])
+        mean = stacked.mean(axis=1)
+        ax.plot(range(num_weeks), mean, color=color, linewidth=2.0,
+                label=f"dose={dose:.0e} (n={len(traces)})")
+
+    # Set x-axis to last non-zero week across all traces
+    last_nonzero = 0
+    for traces in dose_weekly.values():
+        for trace in traces:
+            nonzero = trace[trace > 0]
+            if len(nonzero) > 0:
+                last_nonzero = max(last_nonzero, nonzero.index.max())
+    if last_nonzero > 0:
+        ax.set_xlim(-0.5, last_nonzero + 0.5)
+
+    ax.set_xlabel("Week")
+    ax.set_ylabel("Weekly transmissions")
+    ax.set_title("Epidemic curves across fecal-oral dose sweep")
     ax.legend()
     fig.tight_layout()
 
