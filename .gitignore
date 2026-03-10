@@ -14,3 +14,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Simulation output (bulk CSVs and generated plots)
+/output/
