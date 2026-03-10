@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use rand::Rng;
 use rand_distr::{LogNormal, Normal, Distribution};
 use log::debug;
 use super::params::*;
@@ -33,17 +34,17 @@ impl Immunity {
         }
     }
 
-    pub fn calculate_theta_nab(&self, theta_nabs: &ThetaNabsParams) -> f32 {
+    pub fn calculate_theta_nab(&self, theta_nabs: &ThetaNabsParams, rng: &mut impl Rng) -> f32 {
         let nabs = self.prechallenge_immunity;
         let mean = theta_nabs.a + theta_nabs.b * nabs.log2();
         let stdev = (theta_nabs.c + theta_nabs.d * nabs.log2()).max(0.0).sqrt();
         let normal_dist = Normal::new(mean, stdev).unwrap();
-        normal_dist.sample(&mut rand::thread_rng()).exp()
+        normal_dist.sample(rng).exp()
     }
 
-    pub fn update_peak_immunity(&mut self, theta_nabs: &ThetaNabsParams) {
+    pub fn update_peak_immunity(&mut self, theta_nabs: &ThetaNabsParams, rng: &mut impl Rng) {
         self.prechallenge_immunity = self.current_immunity;
-        let theta_nabs_value = self.calculate_theta_nab(theta_nabs);
+        let theta_nabs_value = self.calculate_theta_nab(theta_nabs, rng);
         self.postchallenge_peak_immunity = self.prechallenge_immunity * theta_nabs_value.max(1.0);
         self.current_immunity = self.postchallenge_peak_immunity.max(1.0);
         debug!("Updated current immunity: {}", self.current_immunity);
@@ -56,14 +57,14 @@ impl Immunity {
         }
     }
 
-    pub fn calculate_shed_duration(&self, shed_duration: &ShedDurationParams) -> f32 {
+    pub fn calculate_shed_duration(&self, shed_duration: &ShedDurationParams, rng: &mut impl Rng) -> f32 {
         let u = shed_duration.u;
         let delta = shed_duration.delta;
         let sigma = shed_duration.sigma;
         let mu = u.ln() - delta.ln() * self.prechallenge_immunity.log2();
         let std = sigma.ln();
         let log_normal_dist = LogNormal::new(mu, std).unwrap();
-        log_normal_dist.sample(&mut rand::thread_rng())
+        log_normal_dist.sample(rng)
     }
 
     pub fn calculate_viral_shedding(&self, age_in_months: f32, days_since_infection: f32, params: &DiseaseParams) -> f32 {
@@ -114,13 +115,14 @@ impl Immunity {
         &mut self,
         infection: &mut Infection,
         sim_time: f32,
-        params: &DiseaseParams
+        params: &DiseaseParams,
+        rng: &mut impl Rng,
     ) {
-        self.update_peak_immunity(&params.theta_nabs);
+        self.update_peak_immunity(&params.theta_nabs, rng);
         self.ti_infected = Some(sim_time);
 
         infection.shed_duration = if let Some(shed_params) = params.shed_duration_for(infection.strain, infection.serotype) {
-            self.calculate_shed_duration(shed_params)
+            self.calculate_shed_duration(shed_params, rng)
         } else {
             30.0
         };

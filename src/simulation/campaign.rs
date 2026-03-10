@@ -6,6 +6,7 @@ use crate::disease::{Immunity, Infection, InfectionStrain, InfectionSerotype, Di
 use crate::population::Individual;
 use super::time::SimulationTime;
 use super::transmission::TransmissionParams;
+use super::SimRng;
 
 /// Event to trigger infection seeding
 #[derive(Event)]
@@ -44,8 +45,9 @@ pub fn handle_seed_infection(
     tx_params: Res<TransmissionParams>,
     disease_params: Res<DiseaseParams>,
     mut susceptibles: Query<(Entity, &Individual, &mut Immunity), Without<Infection>>,
+    mut sim_rng: ResMut<SimRng>,
 ) {
-    let mut rng = rand::thread_rng();
+    let rng = &mut sim_rng.0;
 
     for event in events.read() {
         let strain = event.strain.unwrap_or(tx_params.default_strain);
@@ -68,7 +70,7 @@ pub fn handle_seed_infection(
             event.count
         };
         let n = n.min(eligible.len());
-        let targets: Vec<_> = eligible.choose_multiple(&mut rng, n).cloned().collect();
+        let targets: Vec<_> = eligible.choose_multiple(&mut *rng, n).cloned().collect();
 
         for target_entity in targets {
             if let Ok((_, _, mut immunity)) = susceptibles.get_mut(target_entity) {
@@ -86,7 +88,7 @@ pub fn handle_seed_infection(
                         Infection::new_opv(
                             serotype, 0,
                             tx_params.mean_reversion_days,
-                            &mut rng,
+                            rng,
                         )
                     } else {
                         Infection::new(strain, serotype)
@@ -94,7 +96,8 @@ pub fn handle_seed_infection(
                     immunity.set_infection_prognoses(
                         &mut infection,
                         sim_time.day as f32,
-                        &disease_params
+                        &disease_params,
+                        rng,
                     );
                     commands.entity(target_entity).insert(infection);
                 }
