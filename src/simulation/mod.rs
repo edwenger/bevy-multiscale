@@ -9,8 +9,12 @@ pub use step::*;
 pub use campaign::*;
 
 use std::collections::VecDeque;
+use bevy::app::AppExit;
 use bevy::prelude::*;
-use crate::disease::InfectionStrain;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use crate::disease::{Infection, InfectionStrain};
+use crate::population::Individual;
 
 #[derive(Resource, Default)]
 pub struct SystemTimings {
@@ -21,6 +25,118 @@ pub struct SystemTimings {
     pub arc_update_ms: f32,
     pub arc_count: usize,
     pub shedder_count: usize,
+}
+
+/// Seeded RNG resource for reproducible simulations
+#[derive(Resource)]
+pub struct SimRng(pub StdRng);
+
+impl Default for SimRng {
+    fn default() -> Self {
+        Self(StdRng::from_entropy())
+    }
+}
+
+/// Marker resource for headless mode (no rendering)
+#[derive(Resource)]
+pub struct HeadlessMode;
+
+/// Configuration for headless simulation
+#[derive(Resource)]
+pub struct HeadlessConfig {
+    pub end_time: u32,
+    pub output_path: String,
+}
+
+/// A single transmission record for CSV output
+pub struct TransmissionRecord {
+    pub day: u32,
+    pub source_id: u32,
+    pub target_id: u32,
+    pub source_age: f32,
+    pub target_age: f32,
+    pub level: String,
+    pub strain: String,
+}
+
+/// Log of all transmission events (headless mode)
+#[derive(Resource, Default)]
+pub struct TransmissionLog {
+    pub records: Vec<TransmissionRecord>,
+}
+
+/// System to log transmission events to TransmissionLog (headless only)
+fn log_transmissions(
+    mut events: EventReader<TransmissionEvent>,
+    sim_time: Res<SimulationTime>,
+    individuals: Query<&Individual>,
+    log: Option<ResMut<TransmissionLog>>,
+) {
+    let Some(mut log) = log else { return; };
+    if !sim_time.timer.just_finished() {
+        return;
+    }
+
+    for ev in events.read() {
+        let source_age = individuals.get(ev.source).map(|i| i.age).unwrap_or(0.0);
+        let target_age = individuals.get(ev.target).map(|i| i.age).unwrap_or(0.0);
+        let level = match ev.level {
+            TransmissionLevel::Household => "household",
+            TransmissionLevel::Neighborhood => "neighborhood",
+            TransmissionLevel::Village => "village",
+        };
+        log.records.push(TransmissionRecord {
+            day: sim_time.day,
+            source_id: ev.source.index(),
+            target_id: ev.target.index(),
+            source_age,
+            target_age,
+            level: level.to_string(),
+            strain: format!("{:?}", ev.strain),
+        });
+    }
+}
+
+/// System to check stop conditions in headless mode
+fn check_stop_condition(
+    sim_time: Res<SimulationTime>,
+    config: Option<Res<HeadlessConfig>>,
+    log: Option<Res<TransmissionLog>>,
+    infections: Query<&Infection>,
+    mut exit: EventWriter<AppExit>,
+) {
+    let (Some(config), Some(log)) = (config, log) else { return; };
+    if !sim_time.timer.just_finished() {
+        return;
+    }
+
+    let should_stop = sim_time.day >= config.end_time
+        || (sim_time.day > 30 && infections.is_empty());
+
+    if should_stop {
+        // Write CSV output
+        let path = &config.output_path;
+        if let Ok(mut wtr) = csv::Writer::from_path(path) {
+            let _ = wtr.write_record(&["day", "source_id", "target_id", "source_age", "target_age", "level", "strain"]);
+            for rec in &log.records {
+                let _ = wtr.write_record(&[
+                    rec.day.to_string(),
+                    rec.source_id.to_string(),
+                    rec.target_id.to_string(),
+                    format!("{:.1}", rec.source_age),
+                    format!("{:.1}", rec.target_age),
+                    rec.level.clone(),
+                    rec.strain.clone(),
+                ]);
+            }
+            let _ = wtr.flush();
+            eprintln!("Wrote {} transmission records to {}", log.records.len(), path);
+        } else {
+            eprintln!("Failed to open output file: {}", path);
+        }
+
+        exit.send(AppExit);
+    }
 }
 
 /// Rolling time-series of daily new infections by strain
@@ -113,9 +229,10 @@ impl Plugin for SimulationPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(SimulationTime::default())
             .insert_resource(SimulationSpeed::default())
-            .insert_resource(TransmissionParams::default())
+            .init_resource::<TransmissionParams>()
             .insert_resource(SystemTimings::default())
             .insert_resource(InfectionTimeSeries::default())
+            .init_resource::<SimRng>()
             .init_state::<SimState>()
             .add_event::<TransmissionEvent>()
             .add_event::<SeedInfectionEvent>()
@@ -126,6 +243,10 @@ impl Plugin for SimulationPlugin {
                 record_infections,
                 flush_daily_counts,
                 handle_seed_infection,
-            ).chain().run_if(in_state(SimState::Running)));
+                log_transmissions,
+                check_stop_condition,
+            ).chain().run_if(
+                in_state(SimState::Running).or_else(resource_exists::<HeadlessMode>)
+            ));
     }
 }
