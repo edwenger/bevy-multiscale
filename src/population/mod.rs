@@ -18,7 +18,7 @@ pub struct PopulationPlugin;
 
 impl Plugin for PopulationPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(PopulationConfig::default())
+        app.init_resource::<PopulationConfig>()
             .add_event::<ResetPopulationEvent>();
     }
 }

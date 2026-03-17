@@ -9,8 +9,12 @@ pub use step::*;
 pub use campaign::*;
 
 use std::collections::VecDeque;
+use bevy::app::AppExit;
 use bevy::prelude::*;
-use crate::disease::InfectionStrain;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use crate::disease::{Immunity, Infection, InfectionStrain, DiseaseParams, format_infection_type};
+use crate::population::{Individual, HouseholdMember, NeighborhoodMember};
 
 #[derive(Resource, Default)]
 pub struct SystemTimings {
@@ -21,6 +25,202 @@ pub struct SystemTimings {
     pub arc_update_ms: f32,
     pub arc_count: usize,
     pub shedder_count: usize,
+}
+
+/// Seeded RNG resource for reproducible simulations
+#[derive(Resource)]
+pub struct SimRng(pub StdRng);
+
+impl Default for SimRng {
+    fn default() -> Self {
+        Self(StdRng::from_entropy())
+    }
+}
+
+/// Marker resource for headless mode (no rendering)
+#[derive(Resource)]
+pub struct HeadlessMode;
+
+/// Configuration for headless simulation
+#[derive(Resource)]
+pub struct HeadlessConfig {
+    pub end_time: u32,
+    pub output_path: String,
+}
+
+/// Configuration for population snapshots
+#[derive(Resource)]
+pub struct SnapshotConfig {
+    pub dir: String,
+}
+
+/// Marker: initial snapshot not yet taken
+#[derive(Resource)]
+pub struct NeedsInitialSnapshot;
+
+/// Write a population snapshot CSV to the given path
+fn write_snapshot_csv(
+    path: &str,
+    individuals: &Query<(Entity, &Individual, &Immunity, &HouseholdMember, &NeighborhoodMember, Option<&Infection>)>,
+    disease_params: &DiseaseParams,
+) {
+    let Ok(mut wtr) = csv::Writer::from_path(path) else {
+        eprintln!("Failed to open snapshot file: {}", path);
+        return;
+    };
+    let _ = wtr.write_record(&[
+        "individual_id", "age", "log2_prechallenge_titer", "log2_postchallenge_titer",
+        "log10_peak_cid50", "strain", "household_id", "neighborhood_id",
+    ]);
+    for (entity, ind, imm, hh, nbhd, infection) in individuals.iter() {
+        let log2_titer = imm.prechallenge_immunity.log2();
+        let (peak_cid50, strain_str) = if let Some(inf) = infection {
+            let peak = imm.calculate_log10_peak_cid50(ind.age_in_months(), &disease_params.peak_cid50);
+            (format!("{:.3}", peak), format_infection_type(inf.strain, inf.serotype))
+        } else {
+            ("".to_string(), "".to_string())
+        };
+        let _ = wtr.write_record(&[
+            entity.index().to_string(),
+            format!("{:.2}", ind.age),
+            format!("{:.3}", log2_titer),
+            format!("{:.3}", imm.postchallenge_peak_immunity.log2()),
+            peak_cid50,
+            strain_str,
+            hh.household_id.index().to_string(),
+            nbhd.neighborhood_id.index().to_string(),
+        ]);
+    }
+    let _ = wtr.flush();
+    eprintln!("Wrote population snapshot to {}", path);
+}
+
+/// System to write the initial snapshot after first sim tick
+fn write_initial_snapshot(
+    mut commands: Commands,
+    snapshot_config: Option<Res<SnapshotConfig>>,
+    needs_snapshot: Option<Res<NeedsInitialSnapshot>>,
+    sim_time: Res<SimulationTime>,
+    individuals: Query<(Entity, &Individual, &Immunity, &HouseholdMember, &NeighborhoodMember, Option<&Infection>)>,
+    disease_params: Res<DiseaseParams>,
+) {
+    if needs_snapshot.is_none() { return; }
+    let Some(config) = snapshot_config else { return; };
+    if !sim_time.timer.just_finished() { return; }
+
+    let path = format!("{}/population_initial.csv", config.dir);
+    write_snapshot_csv(&path, &individuals, &disease_params);
+    commands.remove_resource::<NeedsInitialSnapshot>();
+}
+
+/// A single transmission record for CSV output
+pub struct TransmissionRecord {
+    pub day: u32,
+    pub source_id: u32,
+    pub target_id: u32,
+    pub source_age: f32,
+    pub target_age: f32,
+    pub source_log2_titer: f32,
+    pub target_log2_titer: f32,
+    pub level: String,
+    pub strain: String,
+}
+
+/// Log of all transmission events (headless mode)
+#[derive(Resource, Default)]
+pub struct TransmissionLog {
+    pub records: Vec<TransmissionRecord>,
+}
+
+/// System to log transmission events to TransmissionLog (headless only)
+fn log_transmissions(
+    mut events: EventReader<TransmissionEvent>,
+    sim_time: Res<SimulationTime>,
+    individuals: Query<(&Individual, &Immunity)>,
+    log: Option<ResMut<TransmissionLog>>,
+) {
+    let Some(mut log) = log else { return; };
+    if !sim_time.timer.just_finished() {
+        return;
+    }
+
+    for ev in events.read() {
+        let (source_age, source_log2_titer) = individuals.get(ev.source)
+            .map(|(i, imm)| (i.age, imm.prechallenge_immunity.log2()))
+            .unwrap_or((0.0, 0.0));
+        let (target_age, target_log2_titer) = individuals.get(ev.target)
+            .map(|(i, imm)| (i.age, imm.prechallenge_immunity.log2()))
+            .unwrap_or((0.0, 0.0));
+        let level = match ev.level {
+            TransmissionLevel::Household => "household",
+            TransmissionLevel::Neighborhood => "neighborhood",
+            TransmissionLevel::Village => "village",
+        };
+        log.records.push(TransmissionRecord {
+            day: sim_time.day,
+            source_id: ev.source.index(),
+            target_id: ev.target.index(),
+            source_age,
+            target_age,
+            source_log2_titer,
+            target_log2_titer,
+            level: level.to_string(),
+            strain: format!("{:?}", ev.strain),
+        });
+    }
+}
+
+/// System to check stop conditions in headless mode
+fn check_stop_condition(
+    sim_time: Res<SimulationTime>,
+    config: Option<Res<HeadlessConfig>>,
+    snapshot_config: Option<Res<SnapshotConfig>>,
+    log: Option<Res<TransmissionLog>>,
+    infections: Query<&Infection>,
+    individuals: Query<(Entity, &Individual, &Immunity, &HouseholdMember, &NeighborhoodMember, Option<&Infection>)>,
+    disease_params: Res<DiseaseParams>,
+    mut exit: EventWriter<AppExit>,
+) {
+    let (Some(config), Some(log)) = (config, log) else { return; };
+    if !sim_time.timer.just_finished() {
+        return;
+    }
+
+    let should_stop = sim_time.day >= config.end_time
+        || (sim_time.day > 30 && infections.is_empty());
+
+    if should_stop {
+        // Write final population snapshot
+        if let Some(snap) = &snapshot_config {
+            let path = format!("{}/population_final.csv", snap.dir);
+            write_snapshot_csv(&path, &individuals, &disease_params);
+        }
+
+        // Write CSV output
+        let path = &config.output_path;
+        if let Ok(mut wtr) = csv::Writer::from_path(path) {
+            let _ = wtr.write_record(&["day", "source_id", "target_id", "source_age", "target_age", "source_log2_titer", "target_log2_titer", "level", "strain"]);
+            for rec in &log.records {
+                let _ = wtr.write_record(&[
+                    rec.day.to_string(),
+                    rec.source_id.to_string(),
+                    rec.target_id.to_string(),
+                    format!("{:.1}", rec.source_age),
+                    format!("{:.1}", rec.target_age),
+                    format!("{:.2}", rec.source_log2_titer),
+                    format!("{:.2}", rec.target_log2_titer),
+                    rec.level.clone(),
+                    rec.strain.clone(),
+                ]);
+            }
+            let _ = wtr.flush();
+            eprintln!("Wrote {} transmission records to {}", log.records.len(), path);
+        } else {
+            eprintln!("Failed to open output file: {}", path);
+        }
+
+        exit.send(AppExit);
+    }
 }
 
 /// Rolling time-series of daily new infections by strain
@@ -113,9 +313,10 @@ impl Plugin for SimulationPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(SimulationTime::default())
             .insert_resource(SimulationSpeed::default())
-            .insert_resource(TransmissionParams::default())
+            .init_resource::<TransmissionParams>()
             .insert_resource(SystemTimings::default())
             .insert_resource(InfectionTimeSeries::default())
+            .init_resource::<SimRng>()
             .init_state::<SimState>()
             .add_event::<TransmissionEvent>()
             .add_event::<SeedInfectionEvent>()
@@ -126,6 +327,11 @@ impl Plugin for SimulationPlugin {
                 record_infections,
                 flush_daily_counts,
                 handle_seed_infection,
-            ).chain().run_if(in_state(SimState::Running)));
+                log_transmissions,
+                write_initial_snapshot,
+                check_stop_condition,
+            ).chain().run_if(
+                in_state(SimState::Running).or_else(resource_exists::<HeadlessMode>)
+            ));
     }
 }

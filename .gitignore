@@ -8,9 +8,17 @@
 *.swp
 *.swo
 
+# Python
+__pycache__/
+*.pyc
+.venv/
+
 # OS
 .DS_Store
 Thumbs.db
 
 # Logs
 *.log
+
+# Simulation output (bulk CSVs and generated plots)
+/output/

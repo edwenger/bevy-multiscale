@@ -8,6 +8,7 @@ use log::info;
 use crate::disease::{Immunity, Infection, InfectionStrain, InfectionSerotype, DiseaseParams};
 use crate::population::{Individual, HouseholdMember, NeighborhoodMember, Neighborhood};
 use super::time::SimulationTime;
+use super::SimRng;
 
 /// BariLayout trait — views that provide spatial layout implement this
 /// Region view inserts a concrete BariLayout resource; others don't.
@@ -76,6 +77,7 @@ pub fn transmission_system(
     neighborhoods_q: Query<(Entity, &Neighborhood)>,
     mut tx_events: EventWriter<TransmissionEvent>,
     mut timings: ResMut<super::SystemTimings>,
+    mut sim_rng: ResMut<SimRng>,
 ) {
     if !sim_time.timer.just_finished() {
         return;
@@ -83,7 +85,7 @@ pub fn transmission_system(
 
     let t0 = bevy::utils::Instant::now();
 
-    let mut rng = rand::thread_rng();
+    let rng = &mut sim_rng.0;
 
     let nbhd_to_bari: HashMap<Entity, usize> = neighborhoods_q.iter()
         .map(|(e, nbhd)| (e, nbhd.index))
@@ -117,7 +119,7 @@ pub fn transmission_system(
 
         // Household transmission
         if let Some(hh_pool) = susceptibles_by_hh.get(&src_hh.household_id) {
-            let sampled = sample_contacts(hh_pool, params.beta_hh, &mut rng);
+            let sampled = sample_contacts(hh_pool, params.beta_hh, rng);
             for &target_entity in sampled {
                 if let Ok((_, _, immunity, _, _)) = susceptibles.get(target_entity) {
                     let p_inf = immunity.calculate_infection_probability(
@@ -142,7 +144,7 @@ pub fn transmission_system(
                 .filter(|(_, hh_id)| *hh_id != src_hh.household_id)
                 .map(|(entity, _)| *entity)
                 .collect();
-            let sampled = sample_contacts(&nbhd_contacts, params.beta_neighborhood, &mut rng);
+            let sampled = sample_contacts(&nbhd_contacts, params.beta_neighborhood, rng);
             for &target_entity in sampled {
                 if let Ok((_, _, immunity, _, _)) = susceptibles.get(target_entity) {
                     let p_inf = immunity.calculate_infection_probability(
@@ -178,21 +180,23 @@ pub fn transmission_system(
                         bari_weights.push((bari_idx, weight));
                     }
                 }
+                // Sort for deterministic sampling order (HashMap iteration is random)
+                bari_weights.sort_by_key(|(idx, _)| *idx);
 
                 if !bari_weights.is_empty() {
                     let n_village = if params.beta_village > 0.0 {
                         let poisson = Poisson::new(params.beta_village as f64).unwrap();
-                        poisson.sample(&mut rng) as usize
+                        poisson.sample(rng) as usize
                     } else { 0 };
 
                     if n_village > 0 {
                         let weights: Vec<f64> = bari_weights.iter().map(|(_, w)| *w).collect();
                         if let Ok(dist) = WeightedIndex::new(&weights) {
                             for _ in 0..n_village {
-                                let chosen_idx = dist.sample(&mut rng);
+                                let chosen_idx = dist.sample(&mut *rng);
                                 let target_bari = bari_weights[chosen_idx].0;
                                 let pool = &susceptibles_by_bari[&target_bari];
-                                let &target_entity = pool.choose(&mut rng).unwrap();
+                                let &target_entity = pool.choose(&mut *rng).unwrap();
 
                                 if let Ok((_, _, immunity, _, _)) = susceptibles.get(target_entity) {
                                     let p_inf = immunity.calculate_infection_probability(
@@ -216,14 +220,18 @@ pub fn transmission_system(
                 // Uniform village transmission (Neighborhood view — no BariLayout)
                 // Pick from all susceptibles NOT in the same neighborhood
                 let mut other_sus: Vec<Entity> = Vec::new();
-                for (&bari_idx, sus) in &susceptibles_by_bari {
-                    if bari_idx != src_bari_idx {
-                        other_sus.extend(sus);
-                    }
+                // Collect bari indices in sorted order for deterministic sampling
+                let mut other_bari_idxs: Vec<usize> = susceptibles_by_bari.keys()
+                    .filter(|&&idx| idx != src_bari_idx)
+                    .cloned()
+                    .collect();
+                other_bari_idxs.sort();
+                for bari_idx in other_bari_idxs {
+                    other_sus.extend(&susceptibles_by_bari[&bari_idx]);
                 }
 
                 if !other_sus.is_empty() {
-                    let sampled = sample_contacts(&other_sus, params.beta_village, &mut rng);
+                    let sampled = sample_contacts(&other_sus, params.beta_village, rng);
                     for &target_entity in sampled {
                         if let Ok((_, _, immunity, _, _)) = susceptibles.get(target_entity) {
                             let p_inf = immunity.calculate_infection_probability(
@@ -257,12 +265,12 @@ pub fn transmission_system(
         if let Ok((_, _ind, mut immunity, _, _)) = susceptibles.get_mut(entity) {
             let mut inf = match strain {
                 InfectionStrain::OPV => {
-                    Infection::new_opv(serotype, src_mutations, params.mean_reversion_days, &mut rng)
+                    Infection::new_opv(serotype, src_mutations, params.mean_reversion_days, rng)
                 }
                 InfectionStrain::VDPV => Infection::new(InfectionStrain::VDPV, serotype),
                 InfectionStrain::WPV => Infection::new(InfectionStrain::WPV, serotype),
             };
-            immunity.set_infection_prognoses(&mut inf, sim_day, &disease_params);
+            immunity.set_infection_prognoses(&mut inf, sim_day, &disease_params, rng);
             commands.entity(entity).insert(inf);
         }
     }

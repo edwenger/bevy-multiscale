@@ -1,0 +1,21 @@
+# Population
+num_neighborhoods: 5
+households_per_neighborhood: 7
+lifetime_births: 5.0
+time_since_cessation: 2.0
+elimination_duration: 10.0
+vaccine_coverage: 0.5
+
+# Transmission
+beta_hh: 3.0
+beta_neighborhood: 1.0
+beta_village: 0.5
+fecal_oral_dose: 1.0e-5
+
+# Initial conditions
+initial_wpv_cases: 5
+under5_opv_coverage: 0.0  # 0.0 = no OPV campaign at start
+
+# Simulation
+simulation_end_time: 365
+random_seed: 42
