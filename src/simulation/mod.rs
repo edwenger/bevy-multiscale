@@ -13,8 +13,8 @@ use bevy::app::AppExit;
 use bevy::prelude::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use crate::disease::{Immunity, Infection, InfectionStrain};
-use crate::population::Individual;
+use crate::disease::{Immunity, Infection, InfectionStrain, DiseaseParams, format_infection_type};
+use crate::population::{Individual, HouseholdMember, NeighborhoodMember};
 
 #[derive(Resource, Default)]
 pub struct SystemTimings {
@@ -46,6 +46,71 @@ pub struct HeadlessMode;
 pub struct HeadlessConfig {
     pub end_time: u32,
     pub output_path: String,
+}
+
+/// Configuration for population snapshots
+#[derive(Resource)]
+pub struct SnapshotConfig {
+    pub dir: String,
+}
+
+/// Marker: initial snapshot not yet taken
+#[derive(Resource)]
+pub struct NeedsInitialSnapshot;
+
+/// Write a population snapshot CSV to the given path
+fn write_snapshot_csv(
+    path: &str,
+    individuals: &Query<(Entity, &Individual, &Immunity, &HouseholdMember, &NeighborhoodMember, Option<&Infection>)>,
+    disease_params: &DiseaseParams,
+) {
+    let Ok(mut wtr) = csv::Writer::from_path(path) else {
+        eprintln!("Failed to open snapshot file: {}", path);
+        return;
+    };
+    let _ = wtr.write_record(&[
+        "individual_id", "age", "log2_prechallenge_titer", "log2_postchallenge_titer",
+        "log10_peak_cid50", "strain", "household_id", "neighborhood_id",
+    ]);
+    for (entity, ind, imm, hh, nbhd, infection) in individuals.iter() {
+        let log2_titer = imm.prechallenge_immunity.log2();
+        let (peak_cid50, strain_str) = if let Some(inf) = infection {
+            let peak = imm.calculate_log10_peak_cid50(ind.age_in_months(), &disease_params.peak_cid50);
+            (format!("{:.3}", peak), format_infection_type(inf.strain, inf.serotype))
+        } else {
+            ("".to_string(), "".to_string())
+        };
+        let _ = wtr.write_record(&[
+            entity.index().to_string(),
+            format!("{:.2}", ind.age),
+            format!("{:.3}", log2_titer),
+            format!("{:.3}", imm.postchallenge_peak_immunity.log2()),
+            peak_cid50,
+            strain_str,
+            hh.household_id.index().to_string(),
+            nbhd.neighborhood_id.index().to_string(),
+        ]);
+    }
+    let _ = wtr.flush();
+    eprintln!("Wrote population snapshot to {}", path);
+}
+
+/// System to write the initial snapshot after first sim tick
+fn write_initial_snapshot(
+    mut commands: Commands,
+    snapshot_config: Option<Res<SnapshotConfig>>,
+    needs_snapshot: Option<Res<NeedsInitialSnapshot>>,
+    sim_time: Res<SimulationTime>,
+    individuals: Query<(Entity, &Individual, &Immunity, &HouseholdMember, &NeighborhoodMember, Option<&Infection>)>,
+    disease_params: Res<DiseaseParams>,
+) {
+    if needs_snapshot.is_none() { return; }
+    let Some(config) = snapshot_config else { return; };
+    if !sim_time.timer.just_finished() { return; }
+
+    let path = format!("{}/population_initial.csv", config.dir);
+    write_snapshot_csv(&path, &individuals, &disease_params);
+    commands.remove_resource::<NeedsInitialSnapshot>();
 }
 
 /// A single transmission record for CSV output
@@ -109,8 +174,11 @@ fn log_transmissions(
 fn check_stop_condition(
     sim_time: Res<SimulationTime>,
     config: Option<Res<HeadlessConfig>>,
+    snapshot_config: Option<Res<SnapshotConfig>>,
     log: Option<Res<TransmissionLog>>,
     infections: Query<&Infection>,
+    individuals: Query<(Entity, &Individual, &Immunity, &HouseholdMember, &NeighborhoodMember, Option<&Infection>)>,
+    disease_params: Res<DiseaseParams>,
     mut exit: EventWriter<AppExit>,
 ) {
     let (Some(config), Some(log)) = (config, log) else { return; };
@@ -122,6 +190,12 @@ fn check_stop_condition(
         || (sim_time.day > 30 && infections.is_empty());
 
     if should_stop {
+        // Write final population snapshot
+        if let Some(snap) = &snapshot_config {
+            let path = format!("{}/population_final.csv", snap.dir);
+            write_snapshot_csv(&path, &individuals, &disease_params);
+        }
+
         // Write CSV output
         let path = &config.output_path;
         if let Ok(mut wtr) = csv::Writer::from_path(path) {
@@ -254,6 +328,7 @@ impl Plugin for SimulationPlugin {
                 flush_daily_counts,
                 handle_seed_infection,
                 log_transmissions,
+                write_initial_snapshot,
                 check_stop_condition,
             ).chain().run_if(
                 in_state(SimState::Running).or_else(resource_exists::<HeadlessMode>)

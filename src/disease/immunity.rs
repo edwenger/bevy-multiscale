@@ -78,7 +78,7 @@ impl Immunity {
         predicted_concentration.max(10f32.powf(2.6))
     }
 
-    fn calculate_log10_peak_cid50(&self, age_in_months: f32, peak_cid50_params: &PeakCid50Params) -> f32 {
+    pub fn calculate_log10_peak_cid50(&self, age_in_months: f32, peak_cid50_params: &PeakCid50Params) -> f32 {
         let k = peak_cid50_params.k;
         let smax = peak_cid50_params.smax;
         let smin = peak_cid50_params.smin;

@@ -8,6 +8,11 @@
 *.swp
 *.swo
 
+# Python
+__pycache__/
+*.pyc
+.venv/
+
 # OS
 .DS_Store
 Thumbs.db

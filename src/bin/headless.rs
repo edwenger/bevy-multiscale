@@ -13,7 +13,7 @@ use bevy_multiscale::population::{
 };
 use bevy_multiscale::simulation::{
     HeadlessMode, HeadlessConfig, SimRng, TransmissionParams, TransmissionLog,
-    SeedInfectionEvent,
+    SeedInfectionEvent, SnapshotConfig, NeedsInitialSnapshot,
 };
 
 #[derive(Parser)]
@@ -26,6 +26,10 @@ struct Cli {
     /// Path for CSV output
     #[arg(short, long, default_value = "transmissions.csv")]
     output: String,
+
+    /// Directory for population snapshot CSVs (initial + final)
+    #[arg(short, long)]
+    snapshot_dir: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -87,8 +91,8 @@ fn main() {
     let initial_wpv_cases = config.initial_wpv_cases;
     let under5_opv_coverage = config.under5_opv_coverage;
 
-    App::new()
-        .add_plugins(MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(
             Duration::from_secs(0),
         )))
         .insert_resource(HeadlessMode)
@@ -99,7 +103,16 @@ fn main() {
         .insert_resource(TransmissionLog::default())
         .add_plugins(bevy_multiscale::disease::DiseasePlugin)
         .add_plugins(bevy_multiscale::population::PopulationPlugin)
-        .add_plugins(bevy_multiscale::simulation::SimulationPlugin)
+        .add_plugins(bevy_multiscale::simulation::SimulationPlugin);
+
+    if let Some(snap_dir) = &cli.snapshot_dir {
+        std::fs::create_dir_all(snap_dir)
+            .unwrap_or_else(|e| panic!("Failed to create snapshot dir '{}': {}", snap_dir, e));
+        app.insert_resource(SnapshotConfig { dir: snap_dir.clone() });
+        app.insert_resource(NeedsInitialSnapshot);
+    }
+
+    app
         .add_systems(Startup, move |
             mut commands: Commands,
             config: Res<PopulationConfig>,
